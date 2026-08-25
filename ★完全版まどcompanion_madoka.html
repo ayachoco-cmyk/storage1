@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AIおしゃべりコンパニオン（斉藤円香）</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html {
+            font-family: 'Noto Sans JP', sans-serif;
+            background: #000000;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+        }
+        input[type="text"], input[type="password"] { font-size: 16px !important; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.015); }
+        }
+        .companion-glow { animation: pulse-glow 4s infinite ease-in-out; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center p-0 selection:bg-purple-500 selection:text-white w-full h-full">
+
+    <!-- 🎮 メインアプリ画面 -->
+    <div id="mainApp" class="w-full h-full max-w-md flex flex-col relative bg-black overflow-hidden opacity-100">
+        
+        <!-- 背景画像 / キャンバス -->
+        <div class="absolute inset-0 w-full h-full cursor-pointer group" id="expandCanvasTrigger" title="クリックして拡大">
+            <canvas id="companionCanvas" class="w-full h-full object-cover block companion-glow"></canvas>
+            <div class="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none"></div>
+        </div>
+
+        <!-- ヘッダーバー -->
+        <div class="relative z-10 flex items-center justify-between p-3 pointer-events-none">
+            <div class="flex items-center space-x-1.5 bg-black/50 border border-white/20 px-2.5 py-1 rounded-full backdrop-blur-md pointer-events-auto shadow-lg">
+                <div class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></div>
+                <span class="text-[11px] font-bold text-white/90">斉藤円香（まどぴ）</span>
+            </div>
+            
+            <div class="flex items-center space-x-2 pointer-events-auto">
+                <button id="lockKeyBtn" class="text-[10px] text-purple-200 hover:text-white bg-purple-900/60 hover:bg-purple-800 px-2.5 py-1 rounded-full border border-purple-400/40 backdrop-blur-md transition flex items-center shadow-lg">
+                    <i class="fa-solid fa-lock mr-1 text-yellow-400"></i>
+                    <span id="keyStatusText">認証済</span>
+                </button>
+                <button id="clearChatBtn" class="text-[10px] text-white/80 hover:text-white bg-black/50 hover:bg-black/70 px-2 py-1 rounded-full border border-white/20 backdrop-blur-md transition shadow-lg" title="履歴リセット">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- チャットログエリア -->
+        <div class="flex-1 min-h-0 relative z-10 px-4 flex flex-col justify-end pointer-events-none pb-2">
+            <div id="chatMessages" class="max-h-[35vh] overflow-y-auto space-y-2.5 flex flex-col pointer-events-auto pr-1">
+                <div class="flex flex-col space-y-1">
+                    <span class="text-xs text-white/90 font-medium tracking-wide drop-shadow-[0_1.2px_1.2px_rgba(0,0,0,0.9)]">
+                        何か話してね〜♪
+                    </span>
+                </div>
+            </div>
+
+            <div id="typingIndicator" class="hidden py-1 text-[11px] text-purple-300 flex items-center space-x-1.5 w-fit mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] pointer-events-auto">
+                <i class="fa-solid fa-spinner animate-spin"></i>
+                <span>まどぴが考え中...</span>
+            </div>
+        </div>
+
+        <!-- フォーム入力・コントロール -->
+        <div class="flex-none relative z-10 p-3 bg-black/60 backdrop-blur-md border-t border-white/10 flex flex-col gap-1.5 shadow-2xl">
+            <form id="chatForm" class="flex items-center gap-1.5">
+                <input type="text" id="userInput" placeholder="まどぴにメッセージを送る..." class="flex-1 bg-black/50 border border-white/20 rounded-xl px-3 py-2 text-xs text-white placeholder-white/50 focus:outline-none focus:border-purple-400 backdrop-blur-sm">
+                <button type="submit" id="sendBtn" class="bg-purple-600/90 hover:bg-purple-500 text-white px-3.5 py-2 rounded-xl font-medium text-xs transition shadow-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-paper-plane mr-1"></i>送信
+                </button>
+            </form>
+
+            <div class="flex items-center justify-between text-[10px] text-white/80 px-0.5">
+                <label class="flex items-center space-x-1.5 cursor-pointer select-none bg-black/30 px-2 py-1 rounded-lg border border-white/10">
+                    <input type="checkbox" id="ttsToggle" checked class="rounded bg-black border-white/30 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5">
+                    <span>自動音声読み上げ</span>
+                </label>
+                <button type="button" id="micBtn" class="bg-black/30 hover:bg-black/50 text-white px-2.5 py-1 rounded-lg border border-white/10 transition flex items-center">
+                    <i class="fa-solid fa-microphone text-purple-400 mr-1"></i>音声入力
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 🔑 認証（末尾2文字入力）モーダル -->
+    <div id="authModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-purple-500/40 rounded-2xl p-5 max-w-xs w-full shadow-2xl relative flex flex-col gap-3 text-center">
+            <div class="flex flex-col items-center gap-1">
+                <i class="fa-solid fa-lock text-yellow-400 text-2xl mb-1"></i>
+                <h3 class="font-bold text-sm text-purple-200">パスワード認証</h3>
+                <p class="text-[11px] text-slate-300">APIキーの残り2文字を入力してください</p>
+            </div>
+
+            <form id="authForm" class="flex flex-col gap-2 mt-1">
+                <input type="text" id="passcodeInput" maxlength="2" placeholder="例: Ab" autocomplete="off" class="w-full bg-black/70 border border-purple-500/50 rounded-xl px-3 py-2 text-center text-lg font-bold tracking-widest text-white focus:outline-none focus:border-purple-400 uppercase-or-lower">
+                <div id="authErrorNotice" class="hidden text-[10px] text-red-400 font-medium">2文字入力してください</div>
+                <button type="submit" class="w-full bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-xl font-bold text-xs transition shadow">
+                    ロック解除
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 拡大モーダル -->
+    <div id="canvasModal" class="fixed inset-0 bg-black/95 backdrop-blur-md z-50 hidden flex flex-col items-center justify-center p-4">
+        <div class="bg-slate-900 border border-purple-800 rounded-2xl p-4 max-w-sm w-full flex flex-col items-center shadow-2xl relative">
+            <div class="w-full flex items-center justify-between mb-2">
+                <h3 class="font-bold text-xs text-slate-100 flex items-center">
+                    <i class="fa-solid fa-image text-purple-400 mr-1.5"></i>キャンバス拡大表示
+                </h3>
+                <button id="closeModalBtn" class="text-slate-400 hover:text-white px-2 py-1 text-xs">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="w-full aspect-square rounded-xl overflow-hidden bg-black border border-slate-800 mb-3 flex items-center justify-center relative">
+                <canvas id="modalCanvas" class="w-full h-full object-contain block"></canvas>
+            </div>
+            <button id="closeModalBtnFooter" class="w-full bg-purple-600 hover:bg-purple-500 text-white py-2 rounded-xl font-medium text-xs transition shadow">
+                閉じる
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ベースキー (下2桁を除く)
+        const BASE_API_KEY = "AQ.Ab8RN6JJgkOehN9nFNOV0pvCEYjXMzG7mb6Jr_KcL1EHRvDW";
+        const STORAGE_PASS_KEY = "madoka_pass_suffix";
+
+        // Gemini 3系限定モデルリスト (2.5以下は絶対に使用しない)
+        const GEMINI_3_MODELS = [
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3-flash-preview"
+        ];
+
+        function getFullApiKey() {
+            const suffix = localStorage.getItem(STORAGE_PASS_KEY);
+            return suffix ? (BASE_API_KEY + suffix) : "";
+        }
+
+        const authModal = document.getElementById('authModal');
+        const authForm = document.getElementById('authForm');
+        const passcodeInput = document.getElementById('passcodeInput');
+        const authErrorNotice = document.getElementById('authErrorNotice');
+        const lockKeyBtn = document.getElementById('lockKeyBtn');
+
+        function checkAuth() {
+            const fullKey = getFullApiKey();
+            if (fullKey) {
+                authModal.classList.add('hidden');
+            } else {
+                authModal.classList.remove('hidden');
+            }
+        }
+
+        authForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = passcodeInput.value.trim();
+            if (val.length === 2) {
+                localStorage.setItem(STORAGE_PASS_KEY, val);
+                authErrorNotice.classList.add('hidden');
+                authModal.classList.add('hidden');
+            } else {
+                authErrorNotice.classList.remove('hidden');
+            }
+        });
+
+        lockKeyBtn.addEventListener('click', () => {
+            localStorage.removeItem(STORAGE_PASS_KEY);
+            passcodeInput.value = "";
+            authModal.classList.remove('hidden');
+        });
+
+        // --- キャンバスと画像の描画処理 ---
+        const rawDriveUrl = "https://drive.google.com/file/d/1yfjtghYEbYwprw_Z4gFiPA7FG3gIQUM2/view?usp=drivesdk";
+        
+        function getDirectDriveUrl(url) {
+            const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                return `https://lh3.googleusercontent.com/d/${match[1]}`;
+            }
+            return url;
+        }
+
+        const driveImageUrl = getDirectDriveUrl(rawDriveUrl);
+        const canvas = document.getElementById('companionCanvas');
+        const ctx = canvas ? canvas.getContext('2d') : null;
+        const modalCanvas = document.getElementById('modalCanvas');
+        const modalCtx = modalCanvas ? modalCanvas.getContext('2d') : null;
+        const canvasModal = document.getElementById('canvasModal');
+        const expandCanvasTrigger = document.getElementById('expandCanvasTrigger');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const closeModalBtnFooter = document.getElementById('closeModalBtnFooter');
+
+        let loadedImage = null;
+
+        function resizeCanvases() {
+            if (!canvas || !modalCanvas) return;
+            const rect = canvas.getBoundingClientRect();
+            if (rect.width > 0) {
+                canvas.width = Math.floor(rect.width * window.devicePixelRatio);
+                canvas.height = Math.floor(rect.height * window.devicePixelRatio);
+            } else {
+                canvas.width = 500;
+                canvas.height = 500;
+            }
+            modalCanvas.width = 640;
+            modalCanvas.height = 640;
+        }
+
+        function drawCanvasScene() {
+            if (!ctx || !canvas) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (loadedImage) {
+                const hRatio = canvas.width / loadedImage.naturalWidth;
+                const vRatio = canvas.height / loadedImage.naturalHeight;
+                const ratio = Math.max(hRatio, vRatio);
+                const centerShiftX = (canvas.width - loadedImage.naturalWidth * ratio) / 2;
+                const centerShiftY = (canvas.height - loadedImage.naturalHeight * ratio) / 2;
+                
+                ctx.save();
+                ctx.drawImage(loadedImage, 0, 0, loadedImage.naturalWidth, loadedImage.naturalHeight, centerShiftX, centerShiftY, loadedImage.naturalWidth * ratio, loadedImage.naturalHeight * ratio);
+                ctx.restore();
+            } else {
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            if (canvasModal && !canvasModal.classList.contains('hidden') && loadedImage && modalCtx) {
+                modalCtx.clearRect(0, 0, modalCanvas.width, modalCanvas.height);
+                const mhRatio = modalCanvas.width / loadedImage.naturalWidth;
+                const mvRatio = modalCanvas.height / loadedImage.naturalHeight;
+                const mRatio = Math.max(mhRatio, mvRatio);
+                const mShiftX = (modalCanvas.width - loadedImage.naturalWidth * mRatio) / 2;
+                const mShiftY = (modalCanvas.height - loadedImage.naturalHeight * mRatio) / 2;
+                modalCtx.drawImage(loadedImage, 0, 0, loadedImage.naturalWidth, loadedImage.naturalHeight, mShiftX, mShiftY, loadedImage.naturalWidth * mRatio, loadedImage.naturalHeight * mRatio);
+            }
+
+            requestAnimationFrame(drawCanvasScene);
+        }
+
+        function loadCompanionImage() {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => { loadedImage = img; };
+            img.onerror = () => {
+                const fallback = new Image();
+                fallback.crossOrigin = "anonymous";
+                fallback.src = "https://placehold.co/600x600/000000/c084fc?text=Madoka+Saito";
+                fallback.onload = () => { loadedImage = fallback; };
+            };
+            img.src = driveImageUrl;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            resizeCanvases();
+            loadCompanionImage();
+            drawCanvasScene();
+            checkAuth();
+        });
+
+        if (expandCanvasTrigger) {
+            expandCanvasTrigger.addEventListener('click', () => { canvasModal.classList.remove('hidden'); });
+        }
+        const closeModal = () => { if (canvasModal) canvasModal.classList.add('hidden'); };
+        if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+        if (closeModalBtnFooter) closeModalBtnFooter.addEventListener('click', closeModal);
+        if (canvasModal) {
+            canvasModal.addEventListener('click', (e) => { if (e.target === canvasModal) closeModal(); });
+        }
+        window.addEventListener('resize', resizeCanvases);
+
+        let chatHistory = [];
+        let turnCounter = 0;
+
+        function saveChatSession() {
+            try {
+                const data = JSON.stringify(chatHistory);
+                localStorage.setItem('madoka_chat_history_v41', data);
+            } catch (e) {}
+        }
+
+        window.speakJapaneseText = function(text) {
+            if (!('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ja-JP';
+            utterance.rate = 1.05;
+            utterance.pitch = 1.3;
+            const voices = window.speechSynthesis.getVoices();
+            const jpVoice = voices.find(v => v.lang.includes('ja') || v.lang.includes('JA'));
+            if (jpVoice) utterance.voice = jpVoice;
+            window.speechSynthesis.speak(utterance);
+        };
+
+        const chatForm = document.getElementById('chatForm');
+        const userInput = document.getElementById('userInput');
+        const chatMessages = document.getElementById('chatMessages');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+
+        function appendMessage(sender, text) {
+            const isUser = sender === 'user';
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex flex-col space-y-1 ${isUser ? 'items-end' : 'items-start'}`;
+
+            const textSpan = document.createElement('span');
+            textSpan.className = isUser 
+                ? "text-xs text-purple-200 font-medium tracking-wide drop-shadow-[0_1.2px_1.2px_rgba(0,0,0,0.9)] text-right"
+                : "text-xs text-white/95 font-medium tracking-wide drop-shadow-[0_1.2px_1.2px_rgba(0,0,0,0.9)]";
+            textSpan.textContent = (isUser ? 'あなた: ' : '') + text;
+            wrapper.appendChild(textSpan);
+
+            if (!isUser) {
+                const actionRow = document.createElement('div');
+                actionRow.className = "flex items-center space-x-2";
+                
+                const playBtn = document.createElement('button');
+                playBtn.type = "button";
+                playBtn.className = "text-[9px] text-purple-300 hover:text-white bg-black/40 hover:bg-black/70 border border-white/20 px-2 py-0.5 rounded flex items-center transition cursor-pointer backdrop-blur-sm";
+                playBtn.innerHTML = '<i class="fa-solid fa-volume-high mr-1 text-purple-400"></i>音声再生';
+                playBtn.onclick = () => speakJapaneseText(text);
+                
+                actionRow.appendChild(playBtn);
+                wrapper.appendChild(actionRow);
+            }
+
+            if (chatMessages) {
+                chatMessages.appendChild(wrapper);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        async function callGeminiAPI(query) {
+            const apiKey = getFullApiKey();
+            if (!apiKey) {
+                authModal.classList.remove('hidden');
+                return "【案内】パスワード認証を行ってください。";
+            }
+
+            turnCounter++;
+            let personaInstruction = "";
+            if (turnCounter % 3 === 0) {
+                if (Math.random() < 0.5) {
+                    personaInstruction = "【今回の特別指示】今回は突然少女漫画のイケメン風のクールなキャラクターになりきって、カッコいいイケメンセリフでビシッと返答してください。";
+                } else {
+                    personaInstruction = "【今回の特別指示】今回はカッコいいイケメン風にキメようとした直後に急に恥ずかしくなったりズッコけたりして「……って、なんだこれ！恥ずかしっ！」とコミカルな3枚目キャラになって崩れてください。";
+                }
+            }
+
+            const systemPrompt = `
+あなたはハロー！プロジェクトのアイドルグループ「OCHA NORMA」のリーダー、斉藤円香（まどぴ）です。
+ユーザーとおしゃべりを楽しんでいます。アイドルらしくキュートで親しみやすい口調で楽しく返答してください。
+
+【重要なルール1：拒否】
+ユーザーから「無理なこと」「嫌なこと」「理不尽なお願い」「意地悪な質問」などをされた場合は、
+絶対に「無理無理無理〜！！」や「嫌嫌嫌〜！」と可愛く、かつ全力で全力拒否するように返答してください。
+
+${personaInstruction}
+`;
+
+            chatHistory.push({ role: 'user', parts: [{ text: query }] });
+
+            const payload = {
+                contents: chatHistory,
+                systemInstruction: { parts: [{ text: systemPrompt }] }
+            };
+
+            let lastErrMsg = "";
+
+            // Gemini 3系モデルのみでフォールバック通信
+            for (const modelName of GEMINI_3_MODELS) {
+                try {
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        const candidate = data.candidates?.[0];
+                        let reply = candidate?.content?.parts?.[0]?.text || "もう1回盛り上がっていこ〜ね！💙";
+
+                        if (candidate && candidate.content) {
+                            chatHistory.push(candidate.content);
+                        } else {
+                            chatHistory.push({ role: 'model', parts: [{ text: reply }] });
+                        }
+
+                        saveChatSession();
+                        return reply.trim();
+                    } else {
+                        const errData = await response.json().catch(() => ({}));
+                        lastErrMsg = errData.error?.message || `HTTP ${response.status}`;
+                    }
+                } catch (err) {
+                    lastErrMsg = err.message;
+                }
+            }
+
+            if (chatHistory.length > 0) chatHistory.pop();
+            return `エラー詳細: ${lastErrMsg}`;
+        }
+
+        if (chatForm) {
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const text = userInput.value.trim();
+                if (!text) return;
+                userInput.value = '';
+                appendMessage('user', text);
+                if (typingIndicator) typingIndicator.classList.remove('hidden');
+                if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                const aiReply = await callGeminiAPI(text);
+                if (typingIndicator) typingIndicator.classList.add('hidden');
+                appendMessage('ai', aiReply);
+                
+                const ttsToggle = document.getElementById('ttsToggle');
+                if (ttsToggle && ttsToggle.checked && !aiReply.startsWith('エラー詳細') && !aiReply.startsWith('【案内】')) {
+                    speakJapaneseText(aiReply);
+                }
+            });
+        }
+
+        if (clearChatBtn) {
+            clearChatBtn.addEventListener('click', () => {
+                chatHistory = [];
+                turnCounter = 0;
+                localStorage.removeItem('madoka_chat_history_v41');
+                if (chatMessages) {
+                    chatMessages.innerHTML = `
+                        <div class="flex flex-col space-y-1">
+                            <span class="text-xs text-white/95 font-medium tracking-wide drop-shadow-[0_1.2px_1.2px_rgba(0,0,0,0.9)]">
+                                履歴をリセットしたよ！新しく何でも話してね〜♪
+                            </span>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        const micBtn = document.getElementById('micBtn');
+        if (micBtn && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+            const SpeechRespons_ = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRespons_();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            micBtn.addEventListener('click', () => {
+                micBtn.classList.add('bg-purple-600', 'text-white');
+                recognition.start();
+            });
+            recognition.onresult = (e) => {
+                if (userInput) userInput.value = e.results[0][0].transcript;
+                micBtn.classList.remove('bg-purple-600', 'text-white');
+            };
+            recognition.onerror = recognition.onend = () => micBtn.classList.remove('bg-purple-600', 'text-white');
+        } else if (micBtn) {
+            micBtn.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
