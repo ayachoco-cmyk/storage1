@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Piggy Dash 3D - Slalom & Oink Edition</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #7dd3fc; overflow: hidden; font-family: sans-serif; touch-action: none; }
+    #canvas-container { width: 100vw; height: 100vh; display: block; }
+    
+    #ui { position: absolute; top: 16px; left: 0; width: 100%; text-align: center; pointer-events: none; }
+    #score-board { font-size: 26px; font-weight: 900; color: #fff; text-shadow: 2px 2px 0 #0284c7, -2px -2px 0 #0284c7; }
+    .badge-container { margin-top: 4px; display: flex; justify-content: center; gap: 8px; }
+    .badge { font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px; background: rgba(0, 0, 0, 0.45); }
+    #level-badge { color: #fef08a; }
+    #combo-badge { color: #a3e635; display: none; }
+    
+    #combo-popup {
+      position: absolute; top: 85px; width: 100%; text-align: center; font-size: 22px; font-weight: 900;
+      color: #a3e635; text-shadow: 2px 2px 0 #000; opacity: 0; transform: scale(0.8);
+      transition: opacity 0.15s, transform 0.15s; pointer-events: none;
+    }
+
+    #game-over {
+      display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.85); flex-direction: column; align-items: center; justify-content: center;
+    }
+    #game-over h1 { color: #f43f5e; font-size: 36px; margin-bottom: 4px; font-weight: 900; }
+    #oink-sub { color: #fda4af; font-size: 15px; margin-bottom: 16px; font-weight: bold; }
+    #final-score { color: #fff; font-size: 26px; font-weight: bold; margin-bottom: 10px; }
+    #final-detail { color: #cbd5e1; font-size: 15px; margin-bottom: 24px; line-height: 1.8; text-align: center; }
+    
+    #restart-btn {
+      padding: 14px 34px; font-size: 18px; font-weight: bold; background: #fbbf24;
+      border: none; border-radius: 30px; color: #78350f; box-shadow: 0 4px 0 #d97706; cursor: pointer;
+    }
+    #restart-btn:active { transform: translateY(3px); box-shadow: none; }
+    
+    #tutorial {
+      position: absolute; bottom: 25px; width: 100%; text-align: center;
+      color: rgba(255, 255, 255, 0.95); font-size: 13px; font-weight: bold;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.6); pointer-events: none;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="ui">
+    <div id="score-board">スコア: <span id="score">0</span></div>
+    <div class="badge-container">
+      <div id="level-badge" class="badge">SPEED: Lv.<span id="speed-lv">1.0</span></div>
+      <div id="combo-badge" class="badge">🔥 <span id="combo-val">0</span> COMBO</div>
+    </div>
+  </div>
+
+  <div id="combo-popup">🍏 2 COMBO! (+60)</div>
+  <div id="tutorial">奥に並ぶ青リンゴ🍏をジャンプ＆スライドで斜め一閃！</div>
+
+  <div id="game-over">
+    <h1>GAME OVER</h1>
+    <div id="oink-sub">＼ ブヒィィ〜〜〜ン… 🐽 ／</div>
+    <div id="final-score">スコア: 0 点</div>
+    <div id="final-detail">
+      🍎 赤リンゴ: <span id="res-red">0</span>個  |  🍏 青リンゴ: <span id="res-green">0</span>個<br>
+      ✨ 2連コンボ: <span id="res-combo2">0</span>回  |  🔥 3連コンボ: <span id="res-combo3">0</span>回
+    </div>
+    <button id="restart-btn" onclick="resetGame()">もう一度あそぶ</button>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function getAudio() {
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function playTone(freq, type, duration, startVol = 0.15) {
+      try {
+        const ctx = getAudio();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(startVol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+      } catch(e) {}
+    }
+
+    function soundJump() { playTone(460, 'triangle', 0.2); }
+    function soundRedApple() { playTone(880, 'sine', 0.15); }
+
+    function soundGreenAppleTone(comboStep) {
+      const freqs = [1046, 1318, 1568];
+      const f = freqs[comboStep - 1] || 1046;
+      playTone(f, 'sine', 0.22, 0.2);
+      setTimeout(() => playTone(f * 1.5, 'triangle', 0.25, 0.2), 45);
+    }
+
+    function soundSadOink() {
+      try {
+        const ctx = getAudio();
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.linearRampToValueAtTime(560, now + 0.08);
+        osc.frequency.exponentialRampToValueAtTime(130, now + 0.65);
+
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        lfo.frequency.setValueAtTime(24, now);
+        lfoGain.gain.setValueAtTime(45, now);
+        lfo.connect(osc.frequency);
+        lfo.start(now);
+        lfo.stop(now + 0.65);
+
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(850, now);
+        filter.Q.setValueAtTime(2.5, now);
+
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.65);
+      } catch(e) {}
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xa7f3d0);
+    scene.fog = new THREE.Fog(0xa7f3d0, 25, 75);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 4.5, 7.8);
+    camera.lookAt(0, 1.6, -1);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.75);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight.position.set(5, 14, 8);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.set(512, 512);
+    scene.add(dirLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 220),
+      new THREE.MeshLambertMaterial({ color: 0x86efac })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.z = -60;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const SHARED = {
+      fenceBarGeo: new THREE.BoxGeometry(2.3, 0.3, 0.2),
+      fencePostGeo: new THREE.BoxGeometry(0.22, 0.95, 0.22),
+      woodMat: new THREE.MeshLambertMaterial({ color: 0x92400e }),
+      redFruitGeo: new THREE.SphereGeometry(0.35, 8, 8),
+      greenFruitGeo: new THREE.SphereGeometry(0.42, 8, 8),
+      redFruitMat: new THREE.MeshLambertMaterial({ color: 0xef4444 }),
+      greenFruitMat: new THREE.MeshLambertMaterial({ color: 0xa3e635 }),
+      stemGeo: new THREE.CylinderGeometry(0.03, 0.03, 0.15),
+      stemMat: new THREE.MeshLambertMaterial({ color: 0x78350f }),
+      leafGeo: new THREE.BoxGeometry(0.12, 0.18, 0.04),
+      leafMat: new THREE.MeshLambertMaterial({ color: 0x15803d }),
+    };
+
+    const pig = new THREE.Group();
+    const pigPink = new THREE.MeshLambertMaterial({ color: 0xfb7185 });
+    const darkPink = new THREE.MeshLambertMaterial({ color: 0xf43f5e });
+    const blackMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 1.4), pigPink);
+    body.position.y = 0.8;
+    body.castShadow = true;
+    pig.add(body);
+
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.3), darkPink);
+    snout.position.set(0, 0.7, -0.8);
+    snout.castShadow = true;
+    pig.add(snout);
+
+    [-0.12, 0.12].forEach(x => {
+      const hole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.05), blackMat);
+      hole.position.set(x, 0.7, -0.96);
+      pig.add(hole);
+    });
+
+    [-0.35, 0.35].forEach(x => {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), blackMat);
+      eye.position.set(x, 0.95, -0.71);
+      pig.add(eye);
+      const shine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.05), whiteMat);
+      shine.position.set(x - 0.02, 0.97, -0.72);
+      pig.add(shine);
+    });
+
+    [-0.45, 0.45].forEach((x, i) => {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.3, 4), darkPink);
+      ear.position.set(x, 1.35, -0.3);
+      ear.rotation.z = (i === 0 ? 0.3 : -0.3);
+      pig.add(ear);
+    });
+
+    const legs = [];
+    const legPositions = [
+      [-0.4, 0.25, -0.4], [0.4, 0.25, -0.4],
+      [-0.4, 0.25, 0.4],  [0.4, 0.25, 0.4]
+    ];
+    legPositions.forEach(pos => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.5, 0.25), pigPink);
+      leg.position.set(...pos);
+      leg.castShadow = true;
+      pig.add(leg);
+      legs.push(leg);
+    });
+
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.04, 4, 8), darkPink);
+    tail.position.set(0, 0.9, 0.75);
+    pig.add(tail);
+    scene.add(pig);
+
+    // --- ゲーム管理変数 ---
+    let isPlaying = true;
+    let score = 0;
+    let redCount = 0;
+    let greenCount = 0;
+
+    // ★コンボ達成回数の記録
+    let currentCombo = 0;
+    let countCombo2 = 0; // 2連達成回数
+    let countCombo3 = 0; // 3連達成回数
+    let pendingCombo2 = false; // 2連中の保留フラグ
+    let lastGreenCatchTime = 0;
+
+    let pigY = 0;
+    let pigVY = 0;
+    let targetX = 0;
+    let runTime = 0;
+    let gameTicks = 0;
+    let lastLevelText = "";
+
+    const GRAVITY = -0.017;
+    const JUMP_FORCE = 0.33;
+
+    const obstacles = [];
+    const items = [];
+    const LANES = [-2.6, 0, 2.6];
+
+    function createFenceMesh() {
+      const obs = new THREE.Group();
+      const bar = new THREE.Mesh(SHARED.fenceBarGeo, SHARED.woodMat);
+      bar.position.y = 0.55;
+      bar.castShadow = true;
+      obs.add(bar);
+
+      [-0.85, 0.85].forEach(x => {
+        const post = new THREE.Mesh(SHARED.fencePostGeo, SHARED.woodMat);
+        post.position.set(x, 0.48, 0);
+        post.castShadow = true;
+        obs.add(post);
+      });
+      return obs;
+    }
+
+    function createAppleMesh(isGreen = false) {
+      const apple = new THREE.Group();
+      const fruit = new THREE.Mesh(
+        isGreen ? SHARED.greenFruitGeo : SHARED.redFruitGeo,
+        isGreen ? SHARED.greenFruitMat : SHARED.redFruitMat
+      );
+      fruit.castShadow = true;
+      apple.add(fruit);
+
+      const radius = isGreen ? 0.42 : 0.35;
+      const stem = new THREE.Mesh(SHARED.stemGeo, SHARED.stemMat);
+      stem.position.set(0, radius + 0.05, 0);
+      apple.add(stem);
+
+      const leaf = new THREE.Mesh(SHARED.leafGeo, SHARED.leafMat);
+      leaf.position.set(0.08, radius + 0.08, 0);
+      leaf.rotation.z = -0.4;
+      apple.add(leaf);
+
+      apple.userData = { isGreen: isGreen };
+      return apple;
+    }
+
+    function spawnRow() {
+      const progress = Math.min(1.0, gameTicks / 5000);
+      const GREEN_APPLE_Y = 2.7;
+      const RED_APPLE_Y = 0.7;
+
+      const lineAppleChance = 0.4 * progress;
+      const isMultiAirApples = Math.random() < lineAppleChance;
+
+      if (isMultiAirApples) {
+        const count = (progress > 0.5 && Math.random() < 0.6) ? 3 : 2;
+        const goLeftToRight = Math.random() < 0.5;
+        
+        let laneSeq = [];
+        if (count === 3) {
+          laneSeq = goLeftToRight ? [-2.6, 0, 2.6] : [2.6, 0, -2.6];
+        } else {
+          laneSeq = goLeftToRight ? [-2.6, 0] : [2.6, 0];
+        }
+
+        const fence = createFenceMesh();
+        fence.position.set(laneSeq[0], 0, -60);
+        scene.add(fence);
+        obstacles.push(fence);
+
+        laneSeq.forEach((lx, i) => {
+          const apple = createAppleMesh(true);
+          const zOffset = -60 - (i * 2.8);
+          apple.position.set(lx, GREEN_APPLE_Y, zOffset);
+          scene.add(apple);
+          items.push(apple);
+        });
+        return;
+      }
+
+      const doubleFenceProb = 0.45 * progress;
+      const isDouble = Math.random() < doubleFenceProb;
+      const availableLanes = [...LANES];
+
+      if (isDouble) {
+        const freeLaneIndex = Math.floor(Math.random() * 3);
+        availableLanes.splice(freeLaneIndex, 1);
+
+        availableLanes.forEach(laneX => {
+          const fence = createFenceMesh();
+          fence.position.set(laneX, 0, -60);
+          scene.add(fence);
+          obstacles.push(fence);
+        });
+
+        if (Math.random() < 0.7) {
+          const spawnOverFence = Math.random() < 0.6;
+          const appleX = spawnOverFence ? availableLanes[0] : LANES[freeLaneIndex];
+          const isGreen = spawnOverFence || Math.random() < 0.5;
+
+          const apple = createAppleMesh(isGreen);
+          apple.position.set(appleX, isGreen ? GREEN_APPLE_Y : RED_APPLE_Y, -60);
+          scene.add(apple);
+          items.push(apple);
+        }
+
+      } else {
+        const fenceLane = availableLanes.splice(Math.floor(Math.random() * availableLanes.length), 1)[0];
+        const fence = createFenceMesh();
+        fence.position.set(fenceLane, 0, -60);
+        scene.add(fence);
+        obstacles.push(fence);
+
+        if (Math.random() < 0.8) {
+          const isGreen = Math.random() < 0.5;
+          const appleLane = isGreen && Math.random() < 0.5 ? fenceLane : availableLanes[Math.floor(Math.random() * availableLanes.length)];
+
+          const apple = createAppleMesh(isGreen);
+          apple.position.set(appleLane, isGreen ? GREEN_APPLE_Y : RED_APPLE_Y, -60);
+          scene.add(apple);
+          items.push(apple);
+        }
+      }
+    }
+
+    // --- コンボ集計終了処理 ---
+    function finalizeCombo() {
+      if (pendingCombo2) {
+        countCombo2++;
+        pendingCombo2 = false;
+      }
+      currentCombo = 0;
+      document.getElementById('combo-badge').style.display = 'none';
+    }
+
+    // --- コンボ＆スコア処理 ---
+    function addGreenAppleScore() {
+      const now = Date.now();
+      if (now - lastGreenCatchTime < 850) {
+        currentCombo = Math.min(3, currentCombo + 1);
+      } else {
+        finalizeCombo();
+        currentCombo = 1;
+      }
+      lastGreenCatchTime = now;
+
+      soundGreenAppleTone(currentCombo);
+
+      let gained = 30;
+      let popupText = "+30";
+
+      if (currentCombo === 2) {
+        gained += 60;
+        pendingCombo2 = true; // 2連成立（3連に行かなければカウント）
+        popupText = "🍏 2 COMBO!! (+60)";
+      } else if (currentCombo === 3) {
+        gained += 120;
+        countCombo3++; // 3連フルコンボ達成！
+        pendingCombo2 = false; // 2連からは昇格
+        popupText = "🔥 3 COMBO MAX!! (+180)";
+      }
+
+      score += gained;
+      greenCount++;
+      document.getElementById('score').innerText = score;
+
+      const comboBadge = document.getElementById('combo-badge');
+      if (currentCombo >= 2) {
+        comboBadge.style.display = 'inline-block';
+        document.getElementById('combo-val').innerText = currentCombo;
+        showComboPopup(popupText);
+      }
+    }
+
+    function showComboPopup(text) {
+      const el = document.getElementById('combo-popup');
+      el.innerText = text;
+      el.style.opacity = '1';
+      el.style.transform = 'scale(1.15)';
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'scale(0.85)';
+      }, 550);
+    }
+
+    // --- 操作イベント ---
+    let touchStartX = 0;
+    let isTouching = false;
+    let hasMoved = false;
+
+    function handleStart(x) {
+      touchStartX = x;
+      isTouching = true;
+      hasMoved = false;
+    }
+
+    function handleMove(x) {
+      if (!isTouching) return;
+      const deltaX = (x - touchStartX) / window.innerWidth;
+      targetX += deltaX * 12;
+      targetX = Math.max(-3.5, Math.min(3.5, targetX));
+      touchStartX = x;
+      if (Math.abs(deltaX) > 0.008) hasMoved = true;
+    }
+
+    function handleEnd() {
+      if (!hasMoved && pigY === 0 && isPlaying) {
+        pigVY = JUMP_FORCE;
+        soundJump();
+      }
+      isTouching = false;
+    }
+
+    window.addEventListener('touchstart', e => handleStart(e.touches[0].clientX), { passive: true });
+    window.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), { passive: true });
+    window.addEventListener('touchend', handleEnd);
+
+    window.addEventListener('mousedown', e => handleStart(e.clientX));
+    window.addEventListener('mousemove', e => handleMove(e.clientX));
+    window.addEventListener('mouseup', handleEnd);
+
+    // --- メインループ ---
+    let spawnCounter = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (isPlaying) {
+        gameTicks++;
+        runTime += 0.2;
+
+        const progress = Math.min(1.0, gameTicks / 6000);
+        const currentSpeed = 0.44 + progress * 0.18;
+        const spawnInterval = Math.floor(75 - progress * 22);
+
+        // 時間切れによるコンボ確定
+        if (currentCombo > 0 && Date.now() - lastGreenCatchTime > 1000) {
+          finalizeCombo();
+        }
+
+        const newLevelText = (1 + progress * 2).toFixed(1);
+        if (newLevelText !== lastLevelText) {
+          document.getElementById('speed-lv').innerText = newLevelText;
+          lastLevelText = newLevelText;
+        }
+
+        pig.position.x += (targetX - pig.position.x) * 0.22;
+
+        pigVY += GRAVITY;
+        pigY += pigVY;
+        if (pigY <= 0) {
+          pigY = 0;
+          pigVY = 0;
+        }
+        pig.position.y = pigY;
+
+        if (pigY === 0) {
+          legs[0].rotation.x = Math.sin(runTime) * 0.7;
+          legs[1].rotation.x = -Math.sin(runTime) * 0.7;
+          legs[2].rotation.x = -Math.sin(runTime) * 0.7;
+          legs[3].rotation.x = Math.sin(runTime) * 0.7;
+          pig.rotation.z = Math.sin(runTime * 0.5) * 0.05;
+        } else {
+          legs[0].rotation.x = 0.5; legs[1].rotation.x = 0.5;
+          legs[2].rotation.x = -0.5; legs[3].rotation.x = -0.5;
+          pig.rotation.z = -(targetX - pig.position.x) * 0.3;
+        }
+
+        spawnCounter++;
+        if (spawnCounter >= spawnInterval) {
+          spawnRow();
+          spawnCounter = 0;
+        }
+
+        // 障害物判定
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const obs = obstacles[i];
+          obs.position.z += currentSpeed;
+
+          if (
+            Math.abs(obs.position.z - pig.position.z) < 0.95 &&
+            Math.abs(obs.position.x - pig.position.x) < 1.15 &&
+            pigY < 0.85
+          ) {
+            gameOver();
+          }
+
+          if (obs.position.z > 8) {
+            scene.remove(obs);
+            obstacles.splice(i, 1);
+          }
+        }
+
+        // リンゴ判定
+        for (let i = items.length - 1; i >= 0; i--) {
+          const apple = items[i];
+          apple.position.z += currentSpeed;
+          apple.rotation.y += 0.05;
+
+          const distZ = Math.abs(apple.position.z - pig.position.z);
+          const distX = Math.abs(apple.position.x - pig.position.x);
+          const distY = Math.abs(apple.position.y - (pig.position.y + 0.8));
+
+          if (distZ < 1.3 && distX < 1.3 && distY < 1.45) {
+            if (apple.userData.isGreen) {
+              addGreenAppleScore();
+            } else {
+              soundRedApple();
+              score += 10;
+              redCount++;
+              document.getElementById('score').innerText = score;
+            }
+            scene.remove(apple);
+            items.splice(i, 1);
+            continue;
+          }
+
+          if (apple.position.z > 8) {
+            scene.remove(apple);
+            items.splice(i, 1);
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function gameOver() {
+      isPlaying = false;
+      finalizeCombo(); // 最後のコンボも確定集計
+      soundSadOink();
+
+      document.getElementById('final-score').innerText = `スコア: ${score} 点`;
+      document.getElementById('res-red').innerText = redCount;
+      document.getElementById('res-green').innerText = greenCount;
+      document.getElementById('res-combo2').innerText = countCombo2;
+      document.getElementById('res-combo3').innerText = countCombo3;
+      document.getElementById('game-over').style.display = 'flex';
+    }
+
+    function resetGame() {
+      obstacles.forEach(o => scene.remove(o));
+      items.forEach(i => scene.remove(i));
+      obstacles.length = 0;
+      items.length = 0;
+
+      score = 0;
+      redCount = 0;
+      greenCount = 0;
+      currentCombo = 0;
+      countCombo2 = 0;
+      countCombo3 = 0;
+      pendingCombo2 = false;
+
+      gameTicks = 0;
+      spawnCounter = 0;
+      pigY = 0;
+      pigVY = 0;
+      targetX = 0;
+      lastLevelText = "";
+      pig.position.set(0, 0, 0);
+
+      document.getElementById('score').innerText = '0';
+      document.getElementById('speed-lv').innerText = '1.0';
+      document.getElementById('combo-badge').style.display = 'none';
+      document.getElementById('game-over').style.display = 'none';
+      isPlaying = true;
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    animate();
+  </script>
+</body>
+</html>
