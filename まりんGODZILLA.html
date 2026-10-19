@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GODZILLA 3D - Mobile Optimized</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #02040a;
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- HUD: スコア表示 -->
+    <div class="absolute top-4 left-4 z-20 flex items-center space-x-3 pointer-events-none">
+        <div class="bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-red-500/40 shadow-2xl flex items-center space-x-2.5">
+            <div class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></div>
+            <div>
+                <p class="text-[9px] text-slate-400 tracking-wider font-bold">KAIJU DESTRUCTION</p>
+                <p class="text-xs font-mono font-bold text-white">
+                    SCORE: <span id="scoreVal" class="text-amber-400 text-sm">0</span>
+                    <span class="text-slate-500 text-[10px] font-normal"> / 100</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右上ツールボタン -->
+    <div class="absolute top-4 right-4 z-20 flex items-center space-x-2">
+        <button id="btnReset" class="w-8 h-8 bg-slate-900/90 hover:bg-red-950/90 backdrop-blur-md text-slate-300 hover:text-red-400 rounded-xl border border-slate-700 flex items-center justify-center text-xs shadow transition cursor-pointer" title="リセット">
+            <i class="fa-solid fa-rotate-right"></i>
+        </button>
+        <button id="btnGuideToggle" class="w-8 h-8 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 rounded-xl flex items-center justify-center text-slate-300 text-xs shadow transition cursor-pointer" title="操作方法">
+            <i class="fa-solid fa-question"></i>
+        </button>
+    </div>
+
+    <!-- 操作ガイドモーダル -->
+    <div id="guideModal" class="absolute top-14 right-4 z-30 hidden bg-slate-900/95 backdrop-blur-md p-4 rounded-2xl border border-slate-700 text-xs text-slate-300 space-y-2 shadow-2xl w-56">
+        <div class="flex justify-between items-center font-bold text-cyan-400">
+            <span><i class="fa-solid fa-gamepad"></i> 操作ガイド</span>
+            <button id="btnCloseGuide" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <p>• 移動: <span class="text-white font-mono">D-Pad / 矢印キー</span></p>
+        <p>• 熱線: <span class="text-white font-mono">BEAM ボタン / SPACE</span></p>
+        <p class="text-amber-400 font-bold mt-1">★ 100棟破壊でステージクリア！</p>
+    </div>
+
+    <!-- 十字キー（操作UI） -->
+    <div id="touchDpad" class="absolute bottom-5 left-4 z-20 grid grid-cols-3 gap-1.5 w-32 h-32 pointer-events-auto bg-slate-900/70 backdrop-blur-md p-2 rounded-2xl border border-slate-700/80 shadow-2xl transition-opacity duration-300">
+        <div></div>
+        <button id="btnUp" class="bg-slate-800 active:bg-cyan-600 rounded-xl flex items-center justify-center text-white text-sm shadow border border-slate-700"><i class="fa-solid fa-chevron-up"></i></button>
+        <div></div>
+        <button id="btnLeft" class="bg-slate-800 active:bg-cyan-600 rounded-xl flex items-center justify-center text-white text-sm shadow border border-slate-700"><i class="fa-solid fa-rotate-left"></i></button>
+        <div class="flex items-center justify-center bg-slate-900/40 rounded-xl text-slate-500 text-[10px]"><i class="fa-solid fa-gamepad"></i></div>
+        <button id="btnRight" class="bg-slate-800 active:bg-cyan-600 rounded-xl flex items-center justify-center text-white text-sm shadow border border-slate-700"><i class="fa-solid fa-rotate-right"></i></button>
+        <div></div>
+        <button id="btnDown" class="bg-slate-800 active:bg-cyan-600 rounded-xl flex items-center justify-center text-white text-sm shadow border border-slate-700"><i class="fa-solid fa-chevron-down"></i></button>
+        <div></div>
+    </div>
+
+    <!-- アクションボタン（咆哮 / 熱線） -->
+    <div id="touchActions" class="absolute bottom-4 right-4 z-20 flex flex-col items-end space-y-2.5 pointer-events-auto transition-opacity duration-300">
+        <button id="btnRoar" class="w-14 h-14 bg-gradient-to-tr from-amber-600 via-orange-500 to-red-600 active:scale-95 rounded-full flex flex-col items-center justify-center text-white shadow-xl border-2 border-amber-300/80 transition" title="咆哮">
+            <i class="fa-solid fa-bullhorn text-base"></i>
+            <span class="font-black text-[8px] tracking-wider mt-0.5">ROAR</span>
+        </button>
+
+        <button id="btnBeam" class="w-24 h-24 bg-gradient-to-tr from-cyan-700 via-sky-400 to-fuchsia-600 active:scale-95 rounded-full flex flex-col items-center justify-center text-white shadow-2xl border-4 border-cyan-300/80 transition">
+            <i class="fa-solid fa-bolt text-xl mb-0.5 text-cyan-100"></i>
+            <span class="font-black text-[11px] tracking-wider drop-shadow">ATOMIC</span>
+            <span class="font-bold text-[8px] text-cyan-100 tracking-widest">BEAM</span>
+        </button>
+    </div>
+
+    <!-- クリア演出UIオーバーレイ -->
+    <div id="clearOverlay" class="absolute inset-0 z-30 pointer-events-none hidden flex flex-col items-center justify-between p-6 bg-gradient-to-t from-slate-950/90 via-transparent to-slate-950/40">
+        <div class="mt-8 text-center animate-bounce">
+            <span class="px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/50 text-[10px] font-bold tracking-widest uppercase">Target Destroyed</span>
+            <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-red-500 drop-shadow-[0_4px_12px_rgba(251,191,36,0.6)] mt-2">
+                MISSION COMPLETE!
+            </h1>
+            <p class="text-xs font-semibold text-cyan-300 tracking-wider mt-1">100棟 壊滅達成！ 完全制覇</p>
+        </div>
+
+        <div class="pointer-events-auto mb-6 flex flex-col items-center space-y-3">
+            <button id="btnClearRestart" class="px-7 py-3 bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-white font-bold text-sm rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.5)] border border-amber-200 transition transform hover:scale-105 active:scale-95 flex items-center space-x-2">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>もう一度プレイする</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        const SIGN_IMG_URL = "https://lh3.googleusercontent.com/d/1Tbjv5G1PzgHRE_6mxVNcvNt6tnH_hR-N";
+        const CLEAR_IMG_URL = "https://lh3.googleusercontent.com/d/1DECktFs6uWSGYljHw4YI1Z5PfSl-JRaK";
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playRoarSound() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const duration = 2.8; 
+            
+            const subOsc = audioCtx.createOscillator();
+            const mainOsc = audioCtx.createOscillator();
+            const noise = audioCtx.createBufferSource();
+            
+            const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1);
+            }
+            noise.buffer = buffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(300, now);
+            filter.frequency.linearRampToValueAtTime(750, now + 0.4); 
+            filter.frequency.exponentialRampToValueAtTime(150, now + duration);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.01, now);
+            gain.gain.linearRampToValueAtTime(2.5, now + 0.2);
+            gain.gain.setValueAtTime(2.5, now + 1.6);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            mainOsc.type = 'sawtooth';
+            mainOsc.frequency.setValueAtTime(110, now);
+            mainOsc.frequency.linearRampToValueAtTime(220, now + 0.4);
+            mainOsc.frequency.exponentialRampToValueAtTime(60, now + duration);
+
+            subOsc.type = 'sine';
+            subOsc.frequency.setValueAtTime(60, now);
+            subOsc.frequency.linearRampToValueAtTime(120, now + 0.4);
+            subOsc.frequency.exponentialRampToValueAtTime(35, now + duration);
+
+            const subGain = audioCtx.createGain();
+            subGain.gain.setValueAtTime(1.5, now);
+            subGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            mainOsc.connect(filter);
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            subOsc.connect(subGain);
+            subGain.connect(audioCtx.destination);
+
+            mainOsc.start(now);
+            subOsc.start(now);
+            noise.start(now);
+
+            mainOsc.stop(now + duration);
+            subOsc.stop(now + duration);
+            noise.stop(now + duration);
+        }
+
+        function playBeamSound() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const duration = 2.0;
+
+            const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1);
+            }
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const noiseFilter = audioCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.setValueAtTime(150, now);
+            noiseFilter.frequency.linearRampToValueAtTime(700, now + 0.3);
+            noiseFilter.frequency.exponentialRampToValueAtTime(180, now + duration);
+
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.01, now);
+            noiseGain.gain.linearRampToValueAtTime(2.5, now + 0.2);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            noise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(audioCtx.destination);
+
+            noise.start(now);
+            noise.stop(now + duration);
+        }
+
+        function playCollapseSound() {
+            initAudio();
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const duration = 1.2;
+
+            const subOsc = audioCtx.createOscillator();
+            subOsc.type = 'sine';
+            subOsc.frequency.setValueAtTime(90, now);
+            subOsc.frequency.exponentialRampToValueAtTime(25, now + duration);
+
+            const subGain = audioCtx.createGain();
+            subGain.gain.setValueAtTime(1.8, now);
+            subGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            subOsc.connect(subGain);
+            subGain.connect(audioCtx.destination);
+
+            subOsc.start(now);
+            subOsc.stop(now + duration);
+        }
+
+        let renderer;
+        try {
+            renderer = new THREE.WebGLRenderer({ 
+                antialias: false, // スマホのGPU負荷を大きく下げてカクつきを防止
+                powerPreference: 'high-performance',
+                alpha: false
+            });
+        } catch (e) {
+            console.warn(e);
+        }
+
+        if (!renderer) {
+            document.body.innerHTML = '<div class="p-6 text-center">WebGL Error</div>';
+        } else {
+            // スマホ向けにPixel比を1.0〜1.2に抑制してGPU負荷と発熱・カクつきを完全防止
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.BasicShadowMap; // 最軽量のシャドウ
+            document.body.appendChild(renderer.domElement);
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x02040a);
+            scene.fog = new THREE.FogExp2(0x02040a, 0.005);
+
+            const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 800);
+
+            const ambientLight = new THREE.AmbientLight(0x283856, 1.8);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0x7dd3fc, 2.0);
+            dirLight.position.set(50, 120, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 512;
+            dirLight.shadow.mapSize.height = 512;
+            scene.add(dirLight);
+
+            const explosionLight = new THREE.PointLight(0xffaa33, 0, 120);
+            explosionLight.position.set(0, 20, 0);
+            scene.add(explosionLight);
+
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.setCrossOrigin('anonymous');
+
+            const signBoardTexture = textureLoader.load(SIGN_IMG_URL);
+            const clearBoardTexture = textureLoader.load(CLEAR_IMG_URL);
+
+            function createBuildingTexture() {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; // テクスチャサイズを軽量化
+                canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#0a0e1a';
+                ctx.fillRect(0, 0, 64, 64);
+                ctx.fillStyle = '#ffea00';
+                for (let x = 6; x < 58; x += 12) {
+                    for (let y = 6; y < 58; y += 14) {
+                        if (Math.random() > 0.3) ctx.fillRect(x, y, 6, 8);
+                    }
+                }
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                return texture;
+            }
+
+            const buildingTexture = createBuildingTexture();
+            const particles = [];
+            const stuckSigns = [];
+
+            function spawnStuckSign(x, z) {
+                const boardGeo = new THREE.PlaneGeometry(13.5, 9);
+                const boardMat = new THREE.MeshStandardMaterial({
+                    map: signBoardTexture,
+                    side: THREE.DoubleSide,
+                    roughness: 0.5
+                });
+                const boardMesh = new THREE.Mesh(boardGeo, boardMat);
+                boardMesh.position.set(x + (Math.random() - 0.5) * 4, 3.8, z + (Math.random() - 0.5) * 4);
+                boardMesh.rotation.y = Math.random() * Math.PI * 2;
+                boardMesh.rotation.x = (Math.random() - 0.5) * 0.4;
+                boardMesh.rotation.z = (Math.random() - 0.5) * 0.4;
+                scene.add(boardMesh);
+                stuckSigns.push(boardMesh);
+            }
+
+            function createExplosion(x, y, z, isCollapse = false) {
+                if (isCollapse) playCollapseSound();
+                else playBeamSound();
+
+                explosionLight.position.set(x, y + 8, z);
+                explosionLight.intensity = 40.0;
+                let fade = 10;
+                const fadeFn = () => {
+                    fade--;
+                    explosionLight.intensity *= 0.6;
+                    if (fade > 0) requestAnimationFrame(fadeFn);
+                    else explosionLight.intensity = 0;
+                };
+                fadeFn();
+
+                const flashGeo = new THREE.SphereGeometry(12, 6, 6);
+                const flashMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.9 });
+                const flash = new THREE.Mesh(flashGeo, flashMat);
+                flash.position.set(x, y + 8, z);
+                scene.add(flash);
+                particles.push({ mesh: flash, type: 'flash', life: 0.6 });
+
+                // パーティクル数を12個に厳選してモバイル処理落ちを防止
+                for (let i = 0; i < 12; i++) {
+                    const size = 3 + Math.random() * 4;
+                    const pGeo = new THREE.BoxGeometry(size, size, size);
+                    const pMat = new THREE.MeshBasicMaterial({ color: 0x1e2530 });
+                    const pMesh = new THREE.Mesh(pGeo, pMat);
+                    pMesh.position.set(x + (Math.random() - 0.5) * 10, 4, z + (Math.random() - 0.5) * 10);
+                    const vel = new THREE.Vector3((Math.random() - 0.5) * 10, Math.random() * 12 + 4, (Math.random() - 0.5) * 10);
+                    scene.add(pMesh);
+                    particles.push({ mesh: pMesh, velocity: vel, type: 'debris', life: 1.5, gravity: 0.5 });
+                }
+            }
+
+            let destructionScore = 0;
+            let isGameCleared = false;
+            let clearPoseTimer = 0;
+            let clearBackdropMesh = null;
+
+            function triggerGameClear() {
+                if (isGameCleared) return;
+                isGameCleared = true;
+
+                isBeamFiring = false;
+                beamTimer = 0;
+                beam.material.opacity = 0;
+                monsterSpotlight.intensity = 0;
+
+                Object.keys(keys).forEach(k => keys[k] = false);
+
+                document.getElementById('touchDpad').classList.add('opacity-0', 'pointer-events-none');
+                document.getElementById('touchActions').classList.add('opacity-0', 'pointer-events-none');
+                const overlay = document.getElementById('clearOverlay');
+                if (overlay) overlay.classList.remove('hidden');
+
+                const backdropGeo = new THREE.PlaneGeometry(36, 24);
+                const backdropMat = new THREE.MeshBasicMaterial({
+                    map: clearBoardTexture,
+                    side: THREE.DoubleSide
+                });
+                clearBackdropMesh = new THREE.Mesh(backdropGeo, backdropMat);
+                const backDist = 20;
+                clearBackdropMesh.position.set(
+                    godzillaPos.x - Math.sin(godzillaAngle) * backDist,
+                    14,
+                    godzillaPos.y - Math.cos(godzillaAngle) * backDist
+                );
+                clearBackdropMesh.rotation.y = godzillaAngle;
+                scene.add(clearBackdropMesh);
+
+                playRoarSound();
+            }
+
+            function collapseBuilding(b) {
+                if (b.destroyed) return;
+                b.destroyed = true;
+                destructionScore++;
+                const scoreEl = document.getElementById('scoreVal');
+                if (scoreEl) scoreEl.innerText = destructionScore;
+
+                createExplosion(b.x, b.height / 2, b.z, true);
+                b.mesh.visible = false;
+
+                if (Math.random() < 0.25) {
+                    spawnStuckSign(b.x, b.z);
+                }
+
+                if (destructionScore >= 100 && !isGameCleared) {
+                    triggerGameClear();
+                }
+            }
+
+            const buildings = [];
+            const citySize = 6;
+            const blockSize = 32;
+
+            function createCity() {
+                for (let x = -citySize; x <= citySize; x++) {
+                    for (let z = -citySize; z <= citySize; z++) {
+                        if (Math.abs(x) <= 1 && Math.abs(z) <= 1) continue;
+                        if (Math.random() > 0.82) continue;
+
+                        const width = 10 + Math.random() * 8;
+                        const depth = 10 + Math.random() * 8;
+                        const height = 25 + Math.random() * 50;
+                        const posX = x * blockSize;
+                        const posZ = z * blockSize;
+
+                        const buildingMat = new THREE.MeshStandardMaterial({
+                            map: buildingTexture,
+                            roughness: 0.3,
+                            metalness: 0.2
+                        });
+
+                        const geom = new THREE.BoxGeometry(width, height, depth);
+                        const mesh = new THREE.Mesh(geom, buildingMat);
+                        mesh.position.set(posX, height / 2, posZ);
+                        mesh.castShadow = true;
+                        mesh.receiveShadow = true;
+                        scene.add(mesh);
+
+                        buildings.push({
+                            mesh: mesh,
+                            x: posX,
+                            z: posZ,
+                            width: width,
+                            depth: depth,
+                            height: height,
+                            destroyed: false
+                        });
+                    }
+                }
+
+                const groundGeo = new THREE.PlaneGeometry(600, 600);
+                const groundMat = new THREE.MeshStandardMaterial({ color: 0x060913, roughness: 0.8 });
+                const ground = new THREE.Mesh(groundGeo, groundMat);
+                ground.rotation.x = -Math.PI / 2;
+                ground.receiveShadow = true;
+                scene.add(ground);
+            }
+            createCity();
+
+            const godzillaGroup = new THREE.Group();
+
+            const skinMaterial = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.5 });
+            const spineMaterial = new THREE.MeshStandardMaterial({ color: 0x00f2fe, emissive: 0x00c6ff, emissiveIntensity: 2.5 });
+
+            const torsoGeo = new THREE.CylinderGeometry(3.6, 5.2, 14, 5);
+            const torso = new THREE.Mesh(torsoGeo, skinMaterial);
+            torso.position.y = 9;
+            torso.castShadow = true;
+            godzillaGroup.add(torso);
+
+            const headGeo = new THREE.BoxGeometry(3.0, 3.0, 5.0);
+            const head = new THREE.Mesh(headGeo, skinMaterial);
+            head.position.set(0, 16.5, 2.5);
+            head.castShadow = true;
+            godzillaGroup.add(head);
+
+            const eyeGeo = new THREE.BoxGeometry(0.5, 0.4, 0.2);
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
+            const leftEye = new THREE.Mesh(eyeGeo, eyeMaterial);
+            leftEye.position.set(1.0, 0.2, 2.55);
+            head.add(leftEye);
+            const rightEye = new THREE.Mesh(eyeGeo, eyeMaterial);
+            rightEye.position.set(-1.0, 0.2, 2.55);
+            head.add(rightEye);
+
+            const armGeo = new THREE.BoxGeometry(1.2, 4.5, 1.4);
+            const leftArm = new THREE.Mesh(armGeo, skinMaterial);
+            leftArm.position.set(2.8, 11, 1.8);
+            godzillaGroup.add(leftArm);
+            const rightArm = new THREE.Mesh(armGeo, skinMaterial);
+            rightArm.position.set(-2.8, 11, 1.8);
+            godzillaGroup.add(rightArm);
+
+            const spines = [];
+            for (let i = 0; i < 6; i++) {
+                const spineGeo = new THREE.ConeGeometry(1.4, 3.5 + i * 0.4, 4);
+                const spine = new THREE.Mesh(spineGeo, spineMaterial);
+                spine.position.set(0, 7.5 + i * 2.1, -3.0 - i * 0.5);
+                spine.rotation.x = -0.15;
+                godzillaGroup.add(spine);
+                spines.push(spine);
+            }
+
+            const tailGeo = new THREE.ConeGeometry(2.8, 16, 5);
+            const tail = new THREE.Mesh(tailGeo, skinMaterial);
+            tail.position.set(0, 5, -7.0);
+            tail.rotation.x = -Math.PI / 2.2;
+            godzillaGroup.add(tail);
+
+            const legGeo = new THREE.CylinderGeometry(1.8, 2.4, 10, 5);
+            const leftLeg = new THREE.Mesh(legGeo, skinMaterial);
+            leftLeg.position.set(2.4, 4, 0);
+            godzillaGroup.add(leftLeg);
+            const rightLeg = new THREE.Mesh(legGeo, skinMaterial);
+            rightLeg.position.set(-2.4, 4, 0);
+            godzillaGroup.add(rightLeg);
+
+            const monsterSpotlight = new THREE.SpotLight(0x00c6ff, 8.0, 50, Math.PI / 3.5, 0.5, 1);
+            monsterSpotlight.position.set(0, 2, 12);
+            godzillaGroup.add(monsterSpotlight);
+
+            scene.add(godzillaGroup);
+
+            const beamGeo = new THREE.CylinderGeometry(1.4, 3.2, 180, 8);
+            const beamMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe, transparent: true, opacity: 0 });
+            const beam = new THREE.Mesh(beamGeo, beamMat);
+            beam.rotation.x = Math.PI / 2;
+            beam.position.set(0, 16, 90);
+            godzillaGroup.add(beam);
+
+            const keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, ' ': false };
+
+            function triggerActionInteraction() {
+                initAudio();
+                if (isWaitingForFirstTap) {
+                    isWaitingForFirstTap = false;
+                    isIntroAnimating = true;
+                    introProgress = 0;
+                }
+            }
+
+            window.addEventListener('keydown', (e) => {
+                triggerActionInteraction();
+                if (keys.hasOwnProperty(e.key)) {
+                    keys[e.key] = true;
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd'].includes(e.key)) {
+                        e.preventDefault();
+                    }
+                }
+                if (e.key === ' ' && !isGameCleared) triggerBeam();
+            });
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            });
+
+            let isBeamFiring = false;
+            let beamTimer = 0;
+            function triggerBeam() {
+                if (isGameCleared) return;
+                triggerActionInteraction();
+                if (!isBeamFiring) {
+                    isBeamFiring = true;
+                    beamTimer = 50;
+                    playBeamSound();
+                    spines.forEach(s => s.material.emissive.setHex(0xf0abfc));
+                    monsterSpotlight.color.setHex(0xf0abfc);
+                    monsterSpotlight.intensity = 16;
+                }
+            }
+
+            let godzillaPos = new THREE.Vector2(0, 0);
+            let godzillaAngle = 0;
+            let targetGodzillaAngle = 0;
+            const moveSpeed = 0.5;
+            let clock = new THREE.Clock();
+
+            let isWaitingForFirstTap = true;
+            let isIntroAnimating = false;
+            let introProgress = 0;
+
+            function startIntroCamera() {
+                isWaitingForFirstTap = true;
+                isIntroAnimating = false;
+                introProgress = 0;
+            }
+
+            function resetGame() {
+                godzillaGroup.position.set(0, 0, 0);
+                godzillaGroup.rotation.y = 0;
+                godzillaAngle = 0;
+                targetGodzillaAngle = 0;
+                godzillaPos.set(0, 0);
+                destructionScore = 0;
+                isGameCleared = false;
+                clearPoseTimer = 0;
+                isBeamFiring = false;
+                beamTimer = 0;
+                beam.material.opacity = 0;
+
+                const scoreVal = document.getElementById('scoreVal');
+                if (scoreVal) scoreVal.innerText = destructionScore;
+
+                document.getElementById('touchDpad').classList.remove('opacity-0', 'pointer-events-none');
+                document.getElementById('touchActions').classList.remove('opacity-0', 'pointer-events-none');
+                const overlay = document.getElementById('clearOverlay');
+                if (overlay) overlay.classList.add('hidden');
+
+                if (clearBackdropMesh) {
+                    scene.remove(clearBackdropMesh);
+                    clearBackdropMesh = null;
+                }
+
+                stuckSigns.forEach(s => scene.remove(s));
+                stuckSigns.length = 0;
+
+                buildings.forEach(b => {
+                    b.destroyed = false;
+                    b.mesh.visible = true;
+                });
+
+                head.rotation.x = 0;
+                leftArm.rotation.x = 0;
+                rightArm.rotation.x = 0;
+                spines.forEach(s => s.material.emissive.setHex(0x00c6ff));
+
+                startIntroCamera();
+                playRoarSound();
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                const time = clock.getElapsedTime();
+
+                if (isGameCleared) {
+                    clearPoseTimer += 0.025;
+                    beam.material.opacity = 0;
+
+                    head.rotation.x = -0.45 + Math.sin(clearPoseTimer * 4) * 0.15;
+                    leftArm.rotation.x = -1.6 + Math.sin(clearPoseTimer * 3) * 0.3;
+                    rightArm.rotation.x = -1.6 - Math.sin(clearPoseTimer * 3) * 0.3;
+                    torso.position.y = 9 + Math.abs(Math.sin(clearPoseTimer * 4)) * 0.6;
+                    tail.rotation.z = Math.sin(clearPoseTimer * 2) * 0.3;
+
+                    const pulse = (Math.sin(clearPoseTimer * 8) + 1) * 0.5;
+                    spines.forEach((s, idx) => {
+                        const hue = (clearPoseTimer * 0.2 + idx * 0.1) % 1;
+                        s.material.emissive.setHSL(hue, 1.0, 0.5);
+                        s.material.emissiveIntensity = 2.0 + pulse * 3.0;
+                    });
+
+                    const camAngle = godzillaAngle + Math.sin(clearPoseTimer * 0.5) * 0.5;
+                    camera.position.x = godzillaGroup.position.x + Math.sin(camAngle) * 25;
+                    camera.position.z = godzillaGroup.position.z + Math.cos(camAngle) * 25;
+                    camera.position.y = 13;
+                    camera.lookAt(godzillaGroup.position.x, godzillaGroup.position.y + 13, godzillaGroup.position.z);
+
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                let forwardInput = 0;
+                let turnInput = 0;
+
+                if (!isWaitingForFirstTap && !isIntroAnimating) {
+                    if (keys.w || keys.ArrowUp) forwardInput += 1;
+                    if (keys.s || keys.ArrowDown) forwardInput -= 1;
+                    if (keys.a || keys.ArrowLeft) turnInput += 1;
+                    if (keys.d || keys.ArrowRight) turnInput -= 1;
+                }
+
+                if (turnInput !== 0) {
+                    targetGodzillaAngle += turnInput * 0.045;
+                }
+
+                let angleDiff = targetGodzillaAngle - godzillaAngle;
+                angleDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+                godzillaAngle += angleDiff * 0.15;
+
+                if (forwardInput !== 0) {
+                    godzillaPos.x += Math.sin(godzillaAngle) * moveSpeed * forwardInput;
+                    godzillaPos.y += Math.cos(godzillaAngle) * moveSpeed * forwardInput;
+
+                    const walkCycle = Math.sin(time * 12);
+                    leftLeg.rotation.x = walkCycle * 0.45 * forwardInput;
+                    rightLeg.rotation.x = -walkCycle * 0.45 * forwardInput;
+                    torso.position.y = 9 + Math.abs(Math.sin(time * 12)) * 0.5;
+                    tail.rotation.z = Math.sin(time * 7) * 0.25;
+                } else {
+                    leftLeg.rotation.x = 0;
+                    rightLeg.rotation.x = 0;
+                    torso.position.y = 9;
+                    tail.rotation.z = 0;
+                }
+
+                godzillaPos.x = Math.max(-180, Math.min(180, godzillaPos.x));
+                godzillaPos.y = Math.max(-180, Math.min(180, godzillaPos.y));
+
+                godzillaGroup.position.x = godzillaPos.x;
+                godzillaGroup.position.z = godzillaPos.y;
+                godzillaGroup.rotation.y = godzillaAngle;
+
+                // パーティクル更新
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.life -= 0.03;
+                    if (p.type === 'flash') {
+                        p.mesh.scale.addScalar(0.6);
+                        p.mesh.material.opacity = p.life;
+                    } else if (p.type === 'debris') {
+                        p.mesh.position.add(p.velocity);
+                        p.velocity.y -= p.gravity;
+                        if (p.mesh.position.y < 0) {
+                            p.mesh.position.y = 0;
+                            p.velocity.set(0, 0, 0);
+                        }
+                    }
+                    if (p.life <= 0) {
+                        scene.remove(p.mesh);
+                        if (p.mesh.geometry) p.mesh.geometry.dispose();
+                        particles.splice(i, 1);
+                    }
+                }
+
+                // 衝突判定
+                if (!isWaitingForFirstTap) {
+                    const collisionDistSq = 18 * 18;
+                    buildings.forEach(b => {
+                        if (!b.destroyed) {
+                            const dx = godzillaGroup.position.x - b.x;
+                            const dz = godzillaGroup.position.z - b.z;
+                            if ((dx * dx + dz * dz) < collisionDistSq) {
+                                collapseBuilding(b);
+                            }
+                        }
+                    });
+                }
+
+                if (isBeamFiring) {
+                    beamTimer--;
+                    beam.material.opacity = Math.min(1, beam.material.opacity + 0.35);
+                    beam.scale.x = 1 + Math.sin(time * 50) * 0.4;
+                    beam.scale.z = beam.scale.x;
+
+                    buildings.forEach(b => {
+                        if (!b.destroyed) {
+                            const forwardDist = (b.x - godzillaGroup.position.x) * Math.sin(godzillaGroup.rotation.y) + (b.z - godzillaGroup.position.z) * Math.cos(godzillaGroup.rotation.y);
+                            const lateralDist = Math.abs((b.x - godzillaGroup.position.x) * Math.cos(godzillaGroup.rotation.y) - (b.z - godzillaGroup.position.z) * Math.sin(godzillaGroup.rotation.y));
+                            if (forwardDist > 0 && forwardDist < 160 && lateralDist < 14) {
+                                collapseBuilding(b);
+                            }
+                        }
+                    });
+
+                    if (beamTimer <= 0) {
+                        isBeamFiring = false;
+                        spines.forEach(s => s.material.emissive.setHex(0x00c6ff));
+                        monsterSpotlight.color.setHex(0x00c6ff);
+                        monsterSpotlight.intensity = 8;
+                    }
+                } else {
+                    beam.material.opacity = Math.max(0, beam.material.opacity - 0.2);
+                }
+
+                // 縦画面スマホ（9:16）向けカメラアングル調整
+                if (isWaitingForFirstTap) {
+                    const faceCamDist = 14;
+                    const faceX = godzillaGroup.position.x + Math.sin(godzillaAngle) * faceCamDist;
+                    const faceZ = godzillaGroup.position.z + Math.cos(godzillaAngle) * faceCamDist;
+                    camera.position.set(faceX, 17, faceZ);
+                    camera.lookAt(godzillaGroup.position.x, godzillaGroup.position.y + 16, godzillaGroup.position.z);
+                } else if (isIntroAnimating) {
+                    introProgress += 0.01;
+                    if (introProgress >= 1) {
+                        introProgress = 1;
+                        isIntroAnimating = false;
+                    }
+                    const ease = introProgress * introProgress * (3 - 2 * introProgress);
+                    const faceX = godzillaGroup.position.x + Math.sin(godzillaAngle) * 14;
+                    const faceZ = godzillaGroup.position.z + Math.cos(godzillaAngle) * 14;
+                    const rearX = godzillaGroup.position.x - Math.sin(godzillaAngle) * 58;
+                    const rearZ = godzillaGroup.position.z - Math.cos(godzillaAngle) * 58;
+
+                    camera.position.x = faceX + (rearX - faceX) * ease;
+                    camera.position.y = 17 + (22 - 17) * ease;
+                    camera.position.z = faceZ + (rearZ - faceZ) * ease;
+                    camera.lookAt(godzillaGroup.position.x, godzillaGroup.position.y + 8, godzillaGroup.position.z);
+                } else {
+                    // スマホの縦長画面でもゴジラが見切れない最適な後方距離
+                    const camDist = 58;
+                    const camHeight = 22;
+                    const targetX = godzillaGroup.position.x - Math.sin(godzillaAngle) * camDist;
+                    const targetZ = godzillaGroup.position.z - Math.cos(godzillaAngle) * camDist;
+
+                    camera.position.x += (targetX - camera.position.x) * 0.12;
+                    camera.position.y += (camHeight - camera.position.y) * 0.12;
+                    camera.position.z += (targetZ - camera.position.z) * 0.12;
+                    camera.lookAt(godzillaGroup.position.x, godzillaGroup.position.y + 8, godzillaGroup.position.z);
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            // ★ カクつきの原因だった scroll イベントを完全削除し、真のリサイズ時のみ実行
+            let lastW = window.innerWidth, lastH = window.innerHeight;
+            function handleResize() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                if (Math.abs(w - lastW) > 10 || Math.abs(h - lastH) > 10) {
+                    lastW = w;
+                    lastH = h;
+                    camera.aspect = w / h;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(w, h);
+                }
+            }
+            window.addEventListener('resize', handleResize);
+
+            window.onload = () => {
+                const btnBeam = document.getElementById('btnBeam');
+                if (btnBeam) {
+                    btnBeam.addEventListener('touchstart', (e) => { e.preventDefault(); triggerBeam(); }, { passive: false });
+                    btnBeam.addEventListener('click', () => { triggerBeam(); });
+                }
+
+                const btnRoar = document.getElementById('btnRoar');
+                if (btnRoar) {
+                    const doRoar = (e) => {
+                        e.preventDefault();
+                        triggerActionInteraction();
+                        playRoarSound();
+                    };
+                    btnRoar.addEventListener('touchstart', doRoar, { passive: false });
+                    btnRoar.addEventListener('click', doRoar);
+                }
+
+                window.addEventListener('touchstart', () => {
+                    triggerActionInteraction();
+                }, { once: true, passive: true });
+
+                const bindButton = (id, keyName) => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    el.addEventListener('touchstart', (e) => { e.preventDefault(); triggerActionInteraction(); keys[keyName] = true; }, { passive: false });
+                    ['touchend', 'touchcancel'].forEach(evt => {
+                        el.addEventListener(evt, (e) => { e.preventDefault(); keys[keyName] = false; }, { passive: false });
+                    });
+                    el.addEventListener('mousedown', (e) => { e.preventDefault(); triggerActionInteraction(); keys[keyName] = true; });
+                    ['mouseup', 'mouseleave'].forEach(evt => {
+                        el.addEventListener(evt, (e) => { e.preventDefault(); keys[keyName] = false; });
+                    });
+                };
+
+                bindButton('btnUp', 'w');
+                bindButton('btnDown', 's');
+                bindButton('btnLeft', 'a');
+                bindButton('btnRight', 'd');
+
+                const btnGuideToggle = document.getElementById('btnGuideToggle');
+                const guideModal = document.getElementById('guideModal');
+                const btnCloseGuide = document.getElementById('btnCloseGuide');
+
+                if (btnGuideToggle && guideModal) {
+                    btnGuideToggle.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        guideModal.classList.toggle('hidden');
+                    });
+                }
+                if (btnCloseGuide && guideModal) {
+                    btnCloseGuide.addEventListener('click', () => guideModal.classList.add('hidden'));
+                }
+
+                const btnReset = document.getElementById('btnReset');
+                if (btnReset) btnReset.addEventListener('click', resetGame);
+
+                const btnClearRestart = document.getElementById('btnClearRestart');
+                if (btnClearRestart) btnClearRestart.addEventListener('click', resetGame);
+
+                startIntroCamera();
+                setTimeout(() => { playRoarSound(); }, 400);
+
+                animate();
+            };
+        }
+    </script>
+</body>
+</html>
